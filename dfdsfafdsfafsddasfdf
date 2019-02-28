@@ -1,0 +1,74 @@
+from pytrends.request import TrendReq
+import pandas as pd
+import os
+
+kw_list=['oled tv','lg oled tv','super uhd + lg nano cell + lg nanocell + lg nano tv + nano cell tv + nanocell tv','qled tv','sony oled tv']
+# country_list=['global','US','CA','FR','DE','IT','NL','BE','ES','SE','PL','RU','AU','VN','TR','MX','BR']
+country_list=['US','GB','AU']
+timeline=['2018-01-01 2018-12-31','2019-01-01 2019-01-31']
+
+pytrends = TrendReq(hl = 'en-US', tz=360)
+os.chdir('C:/Users/A48267/Downloads') # 파일 경로 지정
+writer=pd.ExcelWriter(' TV검색점유율(%s).xlsx'%timeline,engine='xlsxwriter') # 파일명 지정
+
+
+final_dict=dict()
+for country in country_list:
+    timedict=dict()
+    for time in timeline:
+               
+        #검색지수 추출
+        pytrends.build_payload(kw_list, cat=0, timeframe= time, geo=country , gprop ='')
+        df=pytrends.interest_over_time()
+
+        df_sorted=pd.DataFrame({'oled tv': df[kw_list[0]],'lg oled tv': df[kw_list[1]],'super uhd':df[kw_list[2]],
+                                'qled tv': df[kw_list[3]], 'sony oled tv': df[kw_list[4]]})
+        total=sum(df_sorted.sum())
+        product_list=[]
+        for i in range(len(kw_list)):
+            product_list.append(df_sorted.columns[i])
+        
+        #키워드 별 검색지수 합
+        query_volume=[]
+        for j in range(len(product_list)):
+            query_volume.append(df_sorted[product_list[j]].sum())
+
+        #연관 쿼리
+        df2=pytrends.related_queries()
+        dictFrame=dict()
+        for k in range(len(product_list)):
+            dictFrame[product_list[k]]=df2[product_list[k]]['top']
+        oled_query=pd.DataFrame(dictFrame['oled tv'])
+        
+        #lg, Sony 연관쿼리 구하기
+        lg_oled_query=oled_query[(oled_query['query'].str.contains("lg")==True)]
+        sony_oled_query=oled_query[(oled_query['query'].str.contains("sony")==True)]
+        
+        # 전체 OLED 연관쿼리 중 LG/SONY 연관쿼리 비중
+        lg_query_share=lg_oled_query['value'].sum()/oled_query['value'].sum()
+        sony_query_share=sony_oled_query['value'].sum()/oled_query['value'].sum()
+ 
+        #OLED 검색지수 값 * LG or SONY 연관쿼리 비중 + 각 검색지수 
+        lg_oled_query_total=query_volume[0]*lg_query_share+query_volume[1]
+        sony_oled_query_total=query_volume[0]*sony_query_share+query_volume[4]
+
+        final_share=[lg_oled_query_total,query_volume[2],query_volume[3],sony_oled_query_total]
+
+        final_share_2=dict()
+        for o in range(len(final_share)):
+            final_share_2[product_list[o+1]]=final_share[o]/sum(final_share)
+        
+        timedict[time]=final_share_2
+    final_dict[country]=timedict
+
+#         final_data=pd.DataFrame.from_dict(final_share_2,orient='index',columns=timeline)
+        
+#         final_data.to_excel(writer,sheet_name='Summary')
+        
+
+for a in country_list:
+    table=pd.DataFrame(final_dict[a])
+    table.to_excel(writer, sheet_name='Summary', startrow=country_list.index(a)*6)
+                   
+                   
+writer.save()
